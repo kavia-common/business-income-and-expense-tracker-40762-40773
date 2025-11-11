@@ -1,35 +1,44 @@
 #!/usr/bin/env bash
 set -euo pipefail
-WORKSPACE="/home/kavia/workspace/code-generation/business-income-and-expense-tracker-40762-40773/income_expense_backend"
-cd "$WORKSPACE"
-NODE_MAJOR=$(node -v | sed 's/^v//' | cut -d. -f1)
-if [ "$NODE_MAJOR" -lt 18 ]; then echo "ERROR: node >=18 required" >&2; exit 2; fi
-if [ ! -f package.json ]; then
-  cat > package.json <<'EOF'
-{
-  "name":"income-expense-backend",
-  "version":"0.1.0",
-  "private":true,
-  "engines": { "node": ">=18" },
-  "scripts": { "start":"node ./functions/http/index.js", "test":"jest --runInBand" },
-  "dependencies": { "@supabase/supabase-js":"2.26.0" },
-  "devDependencies": { "jest":"29.6.0" }
-}
-EOF
-  npm i --package-lock-only --silent --no-audit --no-fund >/dev/null 2>&1 || true
+WS="/home/kavia/workspace/code-generation/business-income-and-expense-tracker-40762-40773/income_expense_backend"
+cd "$WS"
+mkdir -p "$WS/app" "$WS/tests" "$WS/data"
+if [ ! -f "$WS/app/main.py" ]; then cat > "$WS/app/main.py" <<'PY'
+from fastapi import FastAPI
+app = FastAPI()
+@app.get('/health')
+def health():
+    return {'status':'ok'}
+PY
 fi
-mkdir -p "$WORKSPACE/functions/http" "$WORKSPACE/migrations"
-cat > "$WORKSPACE/functions/http/index.js" <<'EOF'
-// Minimal HTTP function for smoke testing
-const http = require('http');
-const server = http.createServer((req,res)=>{
-  if(req.url==='/health') return res.writeHead(200,{'Content-Type':'application/json'}) && res.end(JSON.stringify({ok:true}));
-  res.writeHead(404); res.end('not found');
-});
-if(require.main===module){ const PORT=process.env.PORT||54321; server.listen(PORT,()=>console.log('listening',PORT)); }
-module.exports=server;
-EOF
-cat > "$WORKSPACE/migrations/001_init.sql" <<'EOF'
-CREATE TABLE IF NOT EXISTS accounts (id serial PRIMARY KEY, name text NOT NULL, created_at timestamptz DEFAULT now());
-CREATE TABLE IF NOT EXISTS transactions (id serial PRIMARY KEY, account_id int REFERENCES accounts(id), amount numeric NOT NULL, type text NOT NULL, created_at timestamptz DEFAULT now());
-EOF
+# requirements (explicitly include requests)
+if [ ! -f "$WS/requirements.txt" ]; then cat > "$WS/requirements.txt" <<'TXT'
+fastapi==0.100.0
+uvicorn==0.22.0
+python-dotenv==1.0.1
+psycopg2-binary==2.9.7
+pytest==7.4.0
+requests==2.31.0
+TXT
+fi
+# .env.example
+if [ ! -f "$WS/.env.example" ]; then cat > "$WS/.env.example" <<'ENV'
+# Supabase connection variables - copy to .env for local dev
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+DATABASE_URL=
+SQLITE_FILE=data/dev.sqlite
+ENV
+fi
+# Create .env from example for non-interactive CI if missing (does not populate secrets)
+if [ ! -f "$WS/.env" ]; then cp "$WS/.env.example" "$WS/.env"; fi
+# minimal package.json for optional node helpers
+if [ ! -f "$WS/package.json" ]; then cat > "$WS/package.json" <<'JSON'
+{"name":"income-expense-backend","version":"0.1.0","private":true}
+JSON
+fi
+# README with absolute path references
+cat > "$WS/README_SUPABASE.md" <<MD
+Workspace-local supabase CLI expected at $WS/.local/bin/supabase or $WS/.local/lib/node_modules/.bin/supabase. To persist PATH for this workspace set EXPORT_GLOBAL_ENV=true before running env install.
+MD
